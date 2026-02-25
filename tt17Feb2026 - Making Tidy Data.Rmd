@@ -1,0 +1,739 @@
+---
+title: "tt-17Feb2026"
+author: "AM"
+date: "2026-02-24"
+output: html_document
+---
+
+# Intro
+
+As I was going through this data set, I thought this would be a funny, silly little project about sheep in New Zealand. However, the more I dug into it, the deeper into the rabbit hole about the definition of "tidy" data I got. 
+
+I think tidy data, as a concept, is relatively easy to understand. I feel like most people can regurgitate the three principles of tidy data:
+
+1. Each varaible must have its own column
+2. Each observation must have its own row
+3. Each value must have its own cell
+
+I have utilized two main sources for understanding tidy data - [Hadley Wickham's 2014 paper](https://vita.had.co.nz/papers/tidy-data.pdf) and the excerpt from [R for Data Science](https://r4ds.hadley.nz/data-tidy.html). Both are written by Hadley Wickham; however, what confused me is that, despite being written by the same person, it gave two (seemingly) contradictory examples of tidy data. In section 3.1 of his 2014 paper, he talks about a common example of untidy data - when column headers are values, not variable names. He contrasts the two as follows:
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(GGally)
+
+#Untidy raw data
+untidy <- tibble(name = c("John Smith", "Jane Doe", "Mary Johnson"),
+                 treatmenta = c(NA_real_, 16, 3),
+                 treatmentb = c(2, 11, 1))
+
+untidy
+
+#"Molten" data - created using pivot_longer()
+
+tidy <- untidy %>% pivot_longer(cols = c(treatmenta, treatmentb),
+                                names_to = "treatment",
+                                values_to = "result")
+
+tidy
+```
+
+The original dataset was untidy because it had column headers as values, not variable names, which he talks about in section 3.1 of his paper. This was rectified using the pivot_longer() function, or what he refers to as "melting" the data. What confused me initially is that it seemed, for this tidy dataset, the result data should be separately stored in its own column. Specifically, it appeared to me that the "longer" format was tidy, whereas the "wider" format was not. 
+
+For example, it appeared that if you had count data of related things, that there should be one column for the levels of the variable and another for the count.
+```{r}
+set.seed(2026)
+
+untidy2 <- tibble(year = c(1990, 2000, 2010),
+                  sheep = sample(c(100:300), 3),
+                  goats = sample(c(100:300), 3))
+
+untidy2
+```
+
+```{r}
+tidy2 <- untidy2 %>% pivot_longer(cols = c(sheep, goats),
+                                  names_to = "livestock",
+                                  values_to = "count")
+tidy2
+```
+However, in R4DS, he gives an explicit example of a non-tidy dataset:
+```{r}
+library(tidyverse)
+
+table2
+```
+Despite having a separate count column, this data set is untidy. He gives the correct tidy data set as:
+```{r}
+table1
+```
+For the more seasoned data scientists, this may not be that confusing. But for someone still nailing down the concept of tidy data, this is pretty confusing. There's a good discussion that gives a much better abstracted explanation of what I'm describing [here](https://forum.posit.co/t/tidy-data-one-standard-or-two/43522) - it seems like others have had similar ideas. 
+
+Going back to the original "untidy" dataset, I've removed the column names to abstract it more and renamed it df1:
+```{r}
+
+df1 <- rename(untidy, col1 = treatmenta)
+df1 <- rename(df1, col2 = treatmentb)
+
+df1
+```
+I've also "melted" the data (or applied pivot_longer(), however you'd like to describe it) to match the structure of the data set described as "tidy"
+
+```{r}
+df2 <- df1 %>% pivot_longer(cols = c(col1, col2),
+                            names_to = "variable",
+                            values_to = "value")
+
+df2
+```
+I think the core confusion is the question - which data set is tidy? Is df1 or df2 tidy? 
+
+To be fair, he does give an explanation in both the 2014 paper and R4DS - initially, for me, it was challenging as it got lost in the meat of the paper, which talks more about *how* to create data sets instead of spending a considerable amount of time discussing *what* tidy data actually looks like for individual cases. In the paper, he writes: 
+
+"For a given dataset, it’s usually easy to figure out what are observations and what are variables, but it is surprisingly difficult to precisely define variables and observations in general. For example, if the columns in the Table 1 were height and weight we would have been happy to call them variables. If the columns were height and width, it would be less clear cut, as we might think of height and width as values of a dimension variable. If the columns were home phone and work phone, we could treat these as two variables, but in a fraud detection environment we might want variables phone number and number type because the use of one phone number for multiple people might suggest fraud. A general rule of thumb is that it is easier to describe functional relationships between variables (e.g., z is a linear combination of x and y, density is the ratio of weight to volume) than between rows, and it is easier to make comparisons between groups of observations (e.g., average of group a vs. average of group b) than between groups of columns."
+
+In R4DS, he says: 
+
+"This means that most real analyses will require at least a little tidying. You’ll begin by figuring out what the underlying variables and observations are. Sometimes this is easy; other times you’ll need to consult with the people who originally generated the data."
+
+That's a lot of words, and can frankly be a bit confusing to someone new to this. But ultimately, my takeaway was that the distinction between df1 and df2 being tidy is based on what the variables are, and what is considered an observation. 
+
+Having thought about it, the definition of a "variable" is inherently tied to what the observation is, as conceptually, a variable is an aspect of the observation that can vary. For example, if our data set is composed of observations where the observations are patients, reasonable variables to include would be things like height, weight, blood pressure, HDl, LDL, etc. It wouldn't necessarily make sense to combined HDL and LDL into a "cholesterol" variable with another column for the blood test value, since each observation (patient) can have a separate value for HDL and a separate value for HDL. To "melt" the data to combine HDL and LDL into one variable would actually violate the tidy data principle, because each observation would not be a row - it would be two rows. For this situation, it would not make sense for a patient's name to appear multiple times in separate rows.
+
+In this situation, df1 would be the appropriate tidy data set. I've changed the names of the columns to reflect this:
+
+```{r}
+df1 <- rename(df1, "HDL" = col1)
+df1 <- rename(df1, "LDL" = col2)
+
+#Disregard the fact that the LDL value is obscenely low
+#Pretend these patients are on experimental insanely high dose statins
+df1
+
+```
+
+
+However, if our observation is something like every time a patient takes a drug (and therefore, not individual patients), it would make sense for a patient's name to appear multiple times in different rows. Different variables that would make sense for this data set could be the name of the patient who took the drug, what drug they took, and an outcome. 
+
+In this situation, df2 would be the appropriate tidy data set. I've changed the names of the columns to reflect this:
+
+```{r}
+df2 <- rename(df2, "treatment" = variable)
+df2 <- rename(df2, "result"  = value)
+
+df2 <- df2 %>% mutate(treatment = case_when(
+    treatment == "col1" ~ "Drug A",
+    treatment == "col2" ~ "Drug B"
+))
+
+df2
+```
+All this to say that the correct tidy form of a data set is dependent on what is defined as an observation. It's not possible to look at a data set and say there's one definitive tidy form. 
+
+Given this, I will clean the data below into a "wide" data frame.The wide data frame will have observations of *agricultural output in one year*. In this wide data frame, it would not make sense for a year to appear multiple times in separate rows - the observation (row) represents the year, of which there is only one. 
+
+```{r}
+#Load tidytuesday data
+tuesdata <- tidytuesdayR::tt_load('2026-02-17')
+
+dataset <- tuesdata$dataset
+
+#Load libraries
+library(rlang)
+library(ggplot2)
+```
+
+```{r}
+head(dataset)
+```
+This data set, as is, looks similar to df2 above - it's in the long format. We see that year appears multiple times. For the situation where an observation is one year, this indicates that the data is not tidy for that specification.
+
+We'll fix this with pivot_wider():
+```{r}
+wide <- dataset %>% pivot_wider(names_from = measure,
+                                values_from = value)
+
+head(wide, 10)
+```
+We can see that we still have multiple years as entries. This dataset appears to start in 1935, and it is currently 2026 - there should be, at most 91 rows. It looks like the driver of this is the value_label column - these correspond 1:1 with each of the rows in the original dataset. We can separate out the value_unit and value_label columns from the original dataset first, then use pivot_wider(). This is, in effect, what Wickham describes in section 3.4 of his paper. 
+
+```{r}
+units <- dataset %>% select(measure, value_unit, value_label)
+
+#Check unique values of value_unit
+table(units$value_unit)
+
+#value_unit only has value of "number" - can just remove since non-descriptive
+units <- units %>% select(-value_unit) %>% distinct()
+
+head(units, 10)
+```
+
+We now have a data frame, units, that is a 1:1 match of each measure with its value label. Now, we can clean the original data frame to a more tidy format:
+
+```{r}
+wide <- dataset %>% select(year_ended_june, measure, value) %>% 
+    pivot_wider(names_from = "measure", values_from = "value")
+
+head(wide, 10)
+```
+We now have one row corresponding to just one year, as we wanted. Just by scanning through head, I see that there are many missing values, particularly from what looks like entire columns for a year. It also looked like my units had repeated values - more than one measure had units of hectares, tonnes, etc. 
+
+First, I'll see how many different units there are:
+```{r}
+
+table(units$value_label)
+
+#21 unique values for value_label
+length(unique(units$value_label))
+
+```
+"Number of sheep" appears 568 times. "Hectares" appears 1760 times. I can see a lot of these columns do not have values, especially for the earlier years. 
+
+I'm curious to see for some of these columns - what percentage of their values are NA?
+
+```{r}
+set.seed(2026)
+
+#Checking a random column 
+sum(is.na(wide[sample(1:ncol(wide), 1)])) / nrow(wide)
+
+sum(is.na(wide[sample(1:ncol(wide), 1)])) / nrow(wide)
+
+sum(is.na(wide[sample(1:ncol(wide), 1)])) / nrow(wide)
+
+```
+3 randomly selected columns had more than 50% of their values as NAs. I'll write a function to iterate through each column and calculate the proportion of values that are NAs. 
+
+```{r}
+#-----------------------------------------------------------------------------#
+# Name: iter()
+# Arguments:
+#   - df - A data frame
+# Returns: A vector of the same length as df with the proportions of NA values 
+#   for each column
+# Description: Iterates through columns of the data frame and sums up the number
+#   of NA values in the column. Divides by the number of rows in the data frame.
+#-----------------------------------------------------------------------------#
+
+iter <- function(df) {
+    
+    #Initialize empty vector to hold proportions
+    vec <- c()
+    
+    for(i in 1:ncol(df)){
+        
+        temp <- sum(is.na(df[, i])) / nrow(df)
+        vec <- c(vec, temp)
+    }
+    return(vec)
+}
+```
+
+```{r}
+hist(iter(wide))
+```
+We see that basically 80% of the data has more than 50% of its values missing. Some columns have over 90% of their values missing. I'm not an expert on data imputation by any means, but to have over 90% of values missing for a sample size of 90, I have to assume it's going to be basically impossible to accurately predict the population distribution that these are being sampled from. It's also unlikely that there are meaningful conclusions that can be drawn from a variable that has only 5 entries. 
+
+Let's first examine the 10 variables that have more than 90% of their values inputted:
+```{r}
+navec <- iter(wide)
+
+#Choose the variable names that have less than 10% NA values
+goodvars <- names(wide[, navec < 0.10])
+
+goodvars
+```
+
+In broad categories, it looks like the variables that have large amounts of data that we can draw conclusions from without much more handling are things like Total Area of Farms, numbers related to sheep (they do love their sheep, I guess), and major grain crops such as wheat, oats, barley, and maize. 
+
+There are only 9 variables here - I'm reluctant to just throw out 183 variables. For some of these, they have maybe 50% of their values as NA. I wonder if, for these variables, their data was inputted at a later time - perhaps it was not until the 1950s that data on chickens were captures, even though I'm sure that chickens existed and were cultivated in New Zealand before then. 
+
+My plan of attack is as follows: 
+
+1. Get a list of every measure that corresponds to a specific value_label (i.e., every variable measured by Cubic Meters, every variable measured by kilograms, etc.)
+2. Explore the data in each of these subsets
+3. See if there are any values that have enough to be used
+
+```{r}
+vallab <- function(df, col){
+  
+  #Create a quosure to use for dplyr functions
+  colquo <- enquo(col)
+  
+  #Create a string to use for base R
+  colname <- as_name(colquo)
+  
+  #Create a list to hold all the dataframes
+  lst <- list()
+
+  
+  for(i in 1:length(unique(df[[colname]]))) {
+  
+  #Need to use [[]] operator to retrieve colname instead of $  
+  temp <- df %>% filter(!!colquo == unique(df[[colname]])[i])
+  
+  #Add df into lst
+  lst <- append(lst, list(temp))
+  
+  }
+  
+  return(lst)
+}
+
+mylist <- vallab(units, value_label)
+```
+
+There are 21 items in my list. I'll go through each one. Specifically, I want to see if there are any variables that are "total" variables for the entire value_label. If that total variable isn't plauged by too many NA values, I will just use that
+
+```{r}
+#Hectares
+
+#I see a Total Area of Farms variable
+sum(is.na(wide$`Total Area of Farms`))
+
+#Not many NA values
+
+plot(wide$year_ended_june, wide$`Total Area of Farms`)
+#A weird / almost suspicious jump in 1980
+
+#Use ggplot with facet to investigate more
+
+g <- ggplot(data = wide %>% 
+                select(year_ended_june, all_of(mylist[[1]][[1]][-1])) %>%
+                pivot_longer(cols = all_of(mylist[[1]][[1]][-1]),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) +
+    geom_col() + 
+    facet_wrap(~ vars) + 
+    theme_minimal() + 
+    theme(axis.title.x = element_blank())
+
+g
+#It looks like there's a variable called `Grassland and Lucerne`
+# that has a large peak around 1980 and is not recorded after 2000
+
+plot(wide$year_ended_june, wide$`Grassland and Lucerne`)
+
+#It doesn't match up with the big jump in the total variable that well, 
+# likely doesn't explain it
+
+#Total Area of Farms is okay, was already identified as a variable with few NAs
+```
+
+```{r}
+mylist[[2]]
+
+sheepvec <- mylist[[2]][[1]]
+
+#I already know Total Number of Sheep and Total Lambs Marked and/or Tailed
+# are good variables to use with few NAs
+
+plot(wide$year_ended_june, wide$`Total Sheep`)
+plot(wide$year_ended_june, wide$`Total Lambs Marked and/or Tailed`)
+
+#Look okay to use
+
+#Only 15 variables, will try to facet to see which others might be usable
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(sheepvec)) %>%
+                pivot_longer(cols = all_of(sheepvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + 
+    facet_wrap(~ vars) + theme_minimal()
+
+g
+
+#It looks like some variables have relatively consistent recording after 1980
+#Will record these in a separate vector from goodvars
+
+okvars <- c(sort(sheepvec)[c(3, 4, 10, 12, 15)])
+```
+
+```{r}
+mylist[[3]]
+
+tonnesvec <- mylist[[3]][[1]]
+
+#I already know Wheat, Oats, Barley, and Maize are good to use
+
+#Let's look at Total of All Fertilizers
+
+#Appears to have pretty good data after 1960
+plot(wide$year_ended_june, wide$`Total All Fertilisers`)
+
+#Check all the others with ggplot2 and faceting
+
+g <- ggplot(data = wide %>% 
+                select(year_ended_june, all_of(tonnesvec[c(5, 7:11)])) %>%
+                pivot_longer(cols = all_of(tonnesvec[c(5, 7:11)]),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + 
+    geom_point() + 
+    facet_wrap(~ vars)
+
+g
+
+goodvars <- c(goodvars, tonnesvec[5])
+
+#Lime and Urea actually look okay as well
+
+okvars <- c(okvars, tonnesvec[c(6, 9)])
+```
+
+```{r}
+#Number of farm holdings
+mylist[[4]]
+
+plot(wide$year_ended_june ,wide$`Number of Farm Holdings`)
+#Lots of values from 1940 - 2020
+
+goodvars <- c(goodvars, mylist[[4]][[1]][1])
+```
+
+```{r}
+#Number of cattle
+mylist[[5]]
+
+cattlevec <- mylist[[5]][[1]]
+
+#Total Beef Cattle - values only after 1970 but looks usable
+plot(wide$year_ended_june, wide$`Total Beef Cattle`)
+
+#Total Cattle - not many values
+plot(wide$year_ended_june, wide$`Total Cattle`)
+
+#Total Dairy Cattle (including Bobby Calves) - values only after 1970 but usable
+plot(wide$year_ended_june, wide$`Total Dairy Cattle (including Bobby Calves)`)
+
+g <- ggplot(data = wide %>% 
+                select(year_ended_june, all_of(sort(cattlevec)[-c(32:34)])) %>%
+                pivot_longer(cols = all_of(sort(cattlevec)[-c(32:34)]),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() +
+    xlim(1980, 2025) + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+    facet_wrap(~ vars) + theme_minimal()
+
+g
+
+goodvars <- c(goodvars, sort(cattlevec)[c(32, 34)])
+okvars <- c(okvars, sort(cattlevec)[c(6, 9, 22)])
+```
+
+```{r}
+#Number of Pigs
+mylist[[6]]
+
+pigvec <- mylist[[6]][[1]]
+#Values only after 1970 but looks usable
+plot(wide$year_ended_june, wide$`Total Pigs`)
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(pigvec)) %>%
+                pivot_longer(cols = all_of(pigvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + 
+    theme_minimal() + theme(axis.title.x = element_blank()) + facet_wrap(~vars)
+
+g
+
+#Everything except piglets has good data after 1975
+
+okvars <- c(okvars, pigvec[-5])
+```
+
+```{r}
+#Number of goats
+mylist[[7]]
+
+#Values appear only after 1980, but think I can use it
+plot(wide$year_ended_june, wide$`Total goats`)
+
+okvars <- c(okvars, mylist[[7]][[1]][1])
+```
+
+```{r}
+#Number of deer
+mylist[[8]]
+
+deervec <- mylist[[8]][[1]]
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(deervec)) %>%
+                pivot_longer(cols = all_of(deervec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + 
+    theme_minimal() + facet_wrap(~ vars)
+
+g    
+
+#Total Deer - values only after 1980, but looks usable
+plot(wide$year_ended_june, wide$`Total Deer`)
+
+#Total male deer - values only after 1980, but looks usable
+plot(wide$year_ended_june, wide$`Total male deer`)
+
+#Total female deer - values only after 1980, but looks usable
+plot(wide$year_ended_june, wide$`Total female deer`)
+
+okvars <- c(okvars, deervec[1:3])
+```
+
+```{r}
+mylist[[9]]
+
+#Only one value
+
+plot(wide$year_ended_june, wide$Grain)
+
+#Not many values, won't keep
+```
+```{r}
+#Square metres
+mylist[[10]]
+
+sqmvec <- mylist[[10]][[1]]
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(sqmvec)) %>%
+                pivot_longer(cols = all_of(sqmvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + theme_minimal() + 
+    facet_wrap(~ vars)
+
+g
+
+#The total variable only has 2 values
+#Other variables have values since 1980
+#I'll add everything except the total variable
+
+wide <- wide %>% mutate(indoor = rowSums(across(all_of(sqmvec[-8])), na.rm = TRUE))
+
+g <- ggplot(data = wide, aes(x = year_ended_june, y = indoor)) + geom_point()
+
+g
+
+#Actually, not that many values. Won't keep
+```
+
+```{r}
+#Number of Chickens
+mylist[[11]]
+
+numchickensvec <- mylist[[11]][[1]]
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(numchickensvec)) %>%
+                pivot_longer(cols = all_of(numchickensvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + facet_wrap(~vars)
+
+g
+
+#Looks like Hens and Broilers have data past 1980
+okvars <- c(okvars, numchickensvec[1:2])
+```
+
+
+```{r}
+#Number of horses
+mylist[[12]]
+
+plot(wide$year_ended_june, wide$Horses)
+
+#Interesting trend, but only data past 1990
+```
+```{r}
+#Number of Alpacas
+mylist[[13]]
+
+plot(wide$year_ended_june, wide$Alpacas)
+
+#Only 5 values
+```
+
+```{r}
+#Number of llamas
+mylist[[14]]
+
+plot(wide$year_ended_june, wide$Llamas)
+
+#Only 5 values
+```
+
+```{r}
+#Number of eggs
+mylist[[15]]
+
+plot(wide$year_ended_june, wide$`Eggs Sold`)
+
+#Small number of values
+```
+
+```{r}
+#Number of alpacas and llamas
+mylist[[16]]
+
+plot(wide$year_ended_june, wide$`Alpacas and Llamas`)
+
+#Small number of values
+```
+
+```{r}
+#Cubic metres
+mylist[[17]]
+
+plot(wide$year_ended_june, wide$`Area of Exotic Timber Harvested in cubic metres`)
+
+#Small number of values
+```
+
+```{r}
+#Kilograms
+mylist[[18]]
+
+plot(wide$year_ended_june, wide$`Velvet harvested (green weight)`)
+
+#Interesting trend, but not many values
+
+```
+
+```{r}
+#Dozens
+mylist[[19]]
+
+plot(wide$year_ended_june, wide$`Eggs from hens`)
+
+#Interesting trend, but not many values
+```
+
+```{r}
+#Number of poultry
+mylist[[20]]
+poultryvec <- mylist[[20]][[1]]
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(poultryvec)) %>%
+                pivot_longer(cols = all_of(poultryvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + facet_wrap(~vars)
+
+g
+
+#Just to practice more ggplot
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(poultryvec)) %>%
+                pivot_longer(cols = all_of(poultryvec),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point(aes(color = vars))
+
+g
+```
+
+```{r}
+#Number of livestock
+
+mylist[[21]]
+
+plot(wide$year_ended_june, wide$`Other livestock`)
+
+#Very few values
+```
+
+
+```{r}
+
+#Data frame with variables with most amount of data
+wide1 <- wide %>% select(year_ended_june, all_of(goodvars))
+
+g <- ggplot(data = wide1 %>% pivot_longer(cols = all_of(goodvars[-1]),
+                                          names_to = "vars",
+                                          values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point(aes(color = vars))
+
+g
+```
+
+In doing the exploratory data analysis, interestingly, it looks like as fertilizer use increases, wheat and oat yields do not significantly change, whereas barley and maize yields actually increase. However, for the wheat, there might be an aspect of high leverage points affecting the regression - the relationship may not necessarily be linear. 
+```{r}
+#How does fertilizer impact grain output
+
+g <- ggplot(data = wide1 %>% select(goodvars[c(6:10)]) %>%
+                pivot_longer(cols = all_of(goodvars[6:9]),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = `Total All Fertilisers`, y = vals)) + 
+    geom_point(aes(color = vars)) + 
+    geom_smooth(aes(group = vars, color = vars), method = "lm") + 
+    xlab("Fertilizer Usage (Tonnes)") + ylab("Crop Yield (Tonnes)") +
+    theme_minimal() + 
+    scale_x_continuous(labels = scales::comma) + 
+    scale_y_continuous(labels = scales::comma)
+g
+```
+
+```{r}
+#How does total farm area affect grain output
+```
+
+
+```{r}
+#Is there a relationship between Total sheep and total beef?
+
+#Let's fill in the color by year
+
+g <- ggplot(data = wide1 %>% rename("Year" = year_ended_june), 
+            aes(x = `Total Sheep` / 1000000, 
+                y = `Total Beef Cattle` / 1000000)) + 
+    geom_point(aes(color = Year)) + theme_minimal() + 
+    theme(panel.grid = element_blank(), 
+          panel.background = element_rect(fill = "gray")) + 
+    scale_x_continuous(labels = scales::comma) + 
+    scale_y_continuous(labels = scales::comma) + 
+    xlab("Total Sheep (Millions)") + ylab("Total Cattle (Millions)")
+
+g
+
+#Sheep and cattle numbers have been steadily in decline
+```
+```{r}
+plot(wide1$`Total Area of Farms`, wide1$`Total Beef Cattle`)
+
+plot(wide1$year_ended_june, wide1$`Total Area of Farms`)
+```
+
+
+```{r}
+#Data frame with variables with data since at least 1980
+wide2 <- wide %>% select(year_ended_june, all_of(okvars), all_of(goodvars))
+
+g <- ggplot(data = wide %>% select(year_ended_june, all_of(okvars)) %>%
+                pivot_longer(cols = all_of(okvars),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + 
+    xlim(1975, 2000) + facet_wrap(~vars)
+
+g
+```
+
+```{r}
+#Goats had an interesting bump in 1980 - did this match the farm area increase
+
+g <- ggplot(data = wide2 %>% select(year_ended_june, 
+                                    `Total goats`,
+                                    `Total Area of Farms`) %>%
+                filter(year_ended_june >= 1980) %>%
+                pivot_longer(cols = c(`Total goats`, `Total Area of Farms`),
+                             names_to = "vars",
+                             values_to = "vals"),
+            aes(x = year_ended_june, y = vals)) + geom_point() + facet_wrap(~vars)
+
+g
+```
+
