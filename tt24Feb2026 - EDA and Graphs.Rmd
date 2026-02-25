@@ -1,0 +1,161 @@
+---
+title: "tidytuesday02"
+author: "AM"
+date: "2026-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggsignif)
+library(RColorBrewer)
+```
+
+## Intro
+
+As I explored the dataset, I set some goals for this Tidy Tuesday, which are as follows:
+
+1. Practice my visualization, since it's a skill I need to improve. Namely, practice different types of geoms and specifying as much of the visualiztions as I can, with a focus on doing these skills faster
+2. Show my exploratory data analysis process
+3. Practice using grepl() and regular expressions
+
+This dataset was relatively clean and did not require a significant amount of data cleaning - I mainly wanted to use this as an opportunity to practice ggplot2, since I feel confident in my ability to generate visualizations, but definitely need to get more efficient at writing the code. The code below isn't meant to be pretty or representative of any final versions of visualizations I would do - it's more intended to demonstrate how I'm doing my ggplot2 code and how I'm doing EDA. 
+
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load('2026-02-24')
+
+sfi <- tuesdata$sfi_grants
+```
+
+```{r}
+sfi %>% select(research_body, proposal_title, current_total_commitment) %>%
+    arrange(desc(current_total_commitment)) %>%
+    head(20)
+
+#A lot of the highest awarded grants have "Phase 2" in the title
+
+#Finding which proposal titles Have Phase 2
+phase2 <- grepl("Phase 2", sfi$proposal_title)
+
+#Create a phase 2 variable
+sfi <- sfi %>% mutate(phase2 = case_when(
+    proposal_title %in% sfi[phase2, ]$proposal_title ~ 1,
+    TRUE ~ 0,
+))
+
+sfi$phase2 <- factor(sfi$phase2,
+                     levels = c(0, 1),
+                     labels = c("No 'Phase 2' In Title", "'Phase 2' In Title"))
+
+#Make a graph comparing award amounts for Phase 2 in title vs. without
+g <- ggplot(data = sfi %>% filter(current_total_commitment > 0), 
+            aes(x = phase2, y = log(current_total_commitment)))
+g <- g + geom_boxplot(staplewidth = 0.2, aes(fill = phase2))
+g <- g + xlab("'Phase 2' In Proposal Title")
+g <- g + ylab("Log of Current Total Commitment Amount")
+g <- g + theme_minimal() + theme(axis.text.x = element_blank(), 
+                                 legend.title = element_blank())
+g
+```
+
+```{r}
+#Interestingly, the median award amount for Phase 2 is actually lower than otherwise
+#However, the number of high outliers is very large
+#Maybe these outliers are all coming from the same institutions?
+
+body <- sfi %>% group_by(research_body) %>% 
+                summarize(count = n()) %>%
+                mutate(ninetieth = case_when(
+                    count > quantile(count, probs = 0.90, na.rm = TRUE) ~ 1,
+                    TRUE ~ 0
+                ))
+
+body %>% group_by(ninetieth) %>% summarize(tot = sum(count, na.rm = TRUE))
+#Top 10 percent of institutions account for over 90% of all awarded grants
+
+sfi <- sfi %>% mutate(ninetieth = case_when(
+    research_body %in% body[which(body$ninetieth == 1), ]$research_body ~ 1,
+    TRUE ~ 0
+))
+
+g <- ggplot(data = sfi %>% filter(ninetieth == 1), 
+            aes(x = reorder(research_body, research_body, length)))
+g <- g + geom_bar(na.rm = TRUE)
+g <- g + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+               plot.margin = margin(3, 0, 0, 100))
+g
+
+#Struggling to get it in descending order
+#If I use geom_col, can explicitly group by descending count
+
+g <- ggplot(data = sfi %>% group_by(research_body) %>%
+                summarize(count = n()) %>%
+                filter(count > quantile(count, probs = 0.90)) %>%
+                arrange(desc(count)), 
+            aes(x = reorder(research_body, -count), y = count, fill = research_body))
+g <- g + geom_col()
+g <- g + theme_minimal()
+g <- g + theme(axis.text.x = element_text(angle = 35, hjust = 1, vjust = 1),
+               plot.margin = margin(3, 0, 0, 100))
+
+pal <- colorRampPalette(brewer.pal(9, "Blues"))
+g <- g + scale_fill_manual(values = pal(14))
+g <- g + theme(legend.position = "none")
+g <- g + xlab("") + ylab("Number of Awarded Grants")
+g
+```
+
+
+```{r}
+
+sfi$ninetieth <- factor(sfi$ninetieth,
+                        levels = c(0, 1),
+                        labels = c("Institutions with Bottom 90 Percent of Grants Awarded", 
+                                   "Institutions with Top 10 Percent of Grants Awarded"))
+
+g <- ggplot(data = sfi %>% filter(current_total_commitment > 0), 
+            aes(x = phase2, y = log(current_total_commitment)))
+g <- g + geom_violin(aes(fill = factor(ninetieth)))
+g <- g + theme(legend.title = element_blank())
+g <- g + xlab("") + ylab("Log of Current Total Commitment Amount")
+g
+
+#Interesting - only institutions in the top 10% of awarded grants received
+#funding for a phase 2 investigation
+
+outliers <- quantile(sfi[phase2 == 1, ]$current_total_commitment, probs = 0.75, na.rm = TRUE)
+
+sfi %>% filter(phase2 == "'Phase 2' In Title" & current_total_commitment > outliers) %>%
+    group_by(research_body) %>% 
+    summarize(count = n())
+
+#All of these institutions belong to institutions in the top 10% of awarded grants
+```
+
+```{r}
+
+#What if I just look at the institution?
+g <- ggplot(data = sfi %>% filter(current_total_commitment > 0),
+            aes(x = ninetieth, y = log(current_total_commitment)))
+g <- g + geom_boxplot(aes(fill = ninetieth))
+g <- g + theme_minimal()
+g <- g + scale_fill_manual(values = c("steelblue", "sienna3"))
+g <- g + theme(legend.title = element_blank(), 
+               axis.text.x = element_blank())
+g <- g + xlab("Institution by Quantile of Number of Awarded Grants")
+g <- g + ylab("Log of Current Total Commitment Amount")
+g <- g + geom_signif(comparisons = list(c(levels(sfi$ninetieth)[1],
+                                          levels(sfi$ninetieth)[2])),
+                     map_signif_level = TRUE)
+g
+
+
+#What is the award difference between Phase 2 and Phase 1?
+```
+
+
