@@ -130,11 +130,7 @@ df2
 ```
 All this to say that the correct tidy form of a data set is dependent on what is defined as an observation. It's not possible to look at a data set and say there's one definitive tidy form. 
 
-Given this, I will clean the data below and make two separate data frames. 
-
-The wide data frame will have observations of *agricultural output in one year*. In this wide data frame, it would not make sense for a year to appear multiple times in separate rows - the observation (row) represents the year, of which there is only one. 
-
-The long data frame will have observations of *agricultural output of a specific category*. 
+Given this, I will clean the data below into a "wide" data frame.The wide data frame will have observations of *agricultural output in one year*. In this wide data frame, it would not make sense for a year to appear multiple times in separate rows - the observation (row) represents the year, of which there is only one. 
 
 ```{r}
 #Load tidytuesday data
@@ -689,11 +685,26 @@ g
 ```{r}
 #Is there a relationship between Total sheep and total beef?
 
-plot(wide1$`Total Sheep`, wide1$`Total Beef Cattle`)
+#Let's fill in the color by year
 
-#Interestingly, as the number of sheep increase, the number of cattle also increases
+g <- ggplot(data = wide1 %>% rename("Year" = year_ended_june), 
+            aes(x = `Total Sheep` / 1000000, 
+                y = `Total Beef Cattle` / 1000000)) + 
+    geom_point(aes(color = Year)) + theme_minimal() + 
+    theme(panel.grid = element_blank(), 
+          panel.background = element_rect(fill = "gray")) + 
+    scale_x_continuous(labels = scales::comma) + 
+    scale_y_continuous(labels = scales::comma) + 
+    xlab("Total Sheep (Millions)") + ylab("Total Cattle (Millions)")
 
+g
 
+#Sheep and cattle numbers have been steadily in decline
+```
+```{r}
+plot(wide1$`Total Area of Farms`, wide1$`Total Beef Cattle`)
+
+plot(wide1$year_ended_june, wide1$`Total Area of Farms`)
 ```
 
 
