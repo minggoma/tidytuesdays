@@ -305,17 +305,18 @@ checkzerotothree <- function(df, vec){
 # Arguments:
 #   df - a data frame
 #   vec - a vector with the column names of dummy variables
-# Returns: nothing
+# Returns: a data frame identical to df with all the listed variables factorized
 # Description: applies factor() function to all variables listed in vec
 #-----------------------------------------------------------------------------#
 
 factorize <- function(df, vec){
-    d <- df[, vec]
     
     for(i in 1:length(vec)) {
         
-        d[, vec[i]][[1]] <- factor(d[, dummy[i]][[1]])
+        df[, vec[i]][[1]] <- factor(df[, vec[i]][[1]])
     }
+    
+    return(df)
 }
 ```
 
@@ -395,6 +396,8 @@ c2 <- names(bb)[17:39]
 
 propna(bb, c2)
 
+#TODO: Remove Featured Artists and Talent Contestant
+
 m <- negorout(bb, c2)
 
 ncol(m)
@@ -419,8 +422,8 @@ bb$front_person_age[which(m[, 3] == 1)]
 bb[which(m[, 3]==1), ]
 
 #Dummy variable which is intended to have values of 0, 1, 2, or 3
-#Value of 30 is likely an entry error, will change it to 3
-bb$front_person_age[which(m[, 4] == 1)] <- 3
+#Value of 3 is just rare, not concerning
+bb$producer_male[which(m[, 4] == 1)]
 ```
 
 Now I need to factorize all the dummy variables. While the function to check for negative values or outliers is helpful, I also want to make sure that only the correct levels are included for each variable. 
@@ -440,14 +443,8 @@ checkzerotothree(bb, dummy03)
 
 #All values look good - now can factorize
 
-#TODO: Write the function
-for(i in 1:length(dummy)){
-    bb[, dummy[i]][[1]] <- factor(bb[, dummy[i]][[1]])
-
-}
-
 dummy <- c(dummy01, dummy02, dummy03)
-factorize(bb, dummy)
+bb <- factorize(bb, dummy)
 ```
 
 The only other thing I want to do is combine artist_white and artist_black into one variable - artist_race. I'm doing this because these variables are both related to artist race and are mutually exclusive - an artist cannot be both white and black. I've double checked this below - there are no entries where both artist_white and artist_black are both 1 for the same observation.
@@ -533,10 +530,6 @@ propna(bb, c4) #Wow. All values for all variables
 m <- negorout(bb, c4) #16 variables have at least one negative value or outlier
                       #Use a function to figure out what each value is
 
-outlierindices <- which(m[, 1] == 1)
-
-bb[, colnames(m)[1]][[1]][outlierindices]
-
 checknegorout(bb, m) #All values are 1, indicating that 1 is an outlier
                      #These instruments are likely so rare
 
@@ -551,7 +544,7 @@ with(bb, {
     for(i in 1:ncol(m)){
         
         #Plot a histogram
-        hist(bb[, colnames(m)[1]][[1]], main = colnames(m)[i])
+        hist(bb[, colnames(m)[1]][[1]], main = colnames(m)[i], xlab = "")
         
     }
 })
@@ -562,13 +555,332 @@ with(bb, {
 ```
 These are all dummy variables, which should have values 0 or 1. I'll use a function to quickly parse through and see if any have values that are not zero or one
 ```{r}
-checkzeroorone(bb, c(49:73))
+checkzeroorone(bb, names(bb)[49:73])
 
 #Nice, all zeros or ones
+
+bb <- factorize(bb, names(bb)[49:73])
+```
+### Section 5
+```{r}
+c5 <- names(bb)[74:94]
+
+propna(bb, c5)
+#Sound effects has 94% of values as NA - NA likely represents no sound effects
+#TODO: Remove sound_effects since it's not doing much for me
+#Remaining columns are all relatively NA free
+
+m <- negorout(bb, c5)
+
+colnames(m)
+
+checknegorout(bb, m)
+#Some of these look like they're outliers because they have values of either
+# 0 or 1, and 1 is just rare
+
+#Others seem like they might be actual outliers, specifically for song length
+# and intro length
+
+hist(bb$rap_verse_in_a_non_rap_song)
+summary(bb$rap_verse_in_a_non_rap_song) # 1 is just a rare value
+
+hist(bb$length_sec)
+bb %>% filter(length_sec > 500) %>% head()
+#After googling, both of these songs and their lengths are correct
+
+hist(bb$instrumental)
+summary(bb$instrumental) #1 is just a rare value
+
+hist(bb$instrumental_length_sec)
+bb %>% filter(instrumental_length_sec > 200) %>% 
+    select(song, artist, instrumental_length_sec) %>% head()
+
+#335 seconds is "Fly, Robin, Fly" which has only 6 words - "Fly, Robin, Fly,
+# up, up to the sky." Why this was the number 1 song at any point is beyond me
+
+#254 seconds is "The Hustle" by Van McCoy, which actually kind of slaps
+#The other songs with long instrumentals also look correct
+
+hist(bb$intro_length_sec)
+bb %>% filter(intro_length_sec > 100) %>% 
+    select(song, artist, intro_length_sec) %>% head()
+
+#"Theme from Shaft" is truly 109 seconds of an intro
+#"Papa Was a Rollin' Stone" is also 115 seconds of an intro
+# Both look correct
+
+hist(bb$free_time_vocal_introduction)
+summary(bb$free_time_vocal_introduction) # 1 is just a rare value
+
+hist(bb$foreign_language)
+summary(bb$foreign_language) # 1 is just a rare value
+
+#Checked all outliers / negative values, looks good to me
+
+#Need to check all factor levels
+
+dummy <- c5[-c(1, 2, 4, 6, 7, 16, 17)]
+
+checkzeroorone(bb, dummy) #everything has a value of 0 or 1
+
+bb <- factorize(bb, dummy)
+
+#TODO: Think more about song structure - should I factorize?
 ```
 
 
-### Section 5
-
 ### Section 6
+
+I grouped off this section of variables since I feel like it has a lot to do with media:
+```{r}
+c6 <- names(bb)[95:105]
+
+propna(bb, c6)
+
+#The "featured_in" variables are almost all NA
+#NA likely represents that it was not featured in a piece of media
+
+m <- negorout(bb, c6)
+colnames(m)
+
+checknegorout(bb, m)
+
+#The unusual values are all 1, likely indicating that the value is rare
+#Check each individually
+
+hist(bb$written_for_a_play)
+summary(bb$written_for_a_play)
+
+hist(bb$written_for_a_t_v_show)
+summary(bb$written_for_a_t_v_show)
+
+hist(bb$associated_with_dance)
+summary(bb$associated_with_dance)
+
+hist(bb$topped_the_charts_by_multiple_artist)
+summary(bb$topped_the_charts_by_multiple_artist)
+
+hist(bb$eurovision_entry)
+summary(bb$eurovision_entry)
+
+#All the "outlier" values are reasonable
+```
+I think that, particularly for more recent years, having a song be written for or featured in a piece of media has a large impact. However, the issue with this data is that it's so spread out - there are very few entries for being featured in a movie, for being featured in a play, etc. I'm going to combine them all into one variable called media to indicate if they were written for or featured in a piece of popular media at the time. 
+
+First, I'll convert all of the character variables into dummy variables to indicate whether or not they were featured in a piece of media, rather than what piece of media they were featured in, since that will be more helpful for our analysis
+```{r}
+bb <- bb %>% mutate(featured_in_a_then_contemporary_play = case_when(
+    !is.na(featured_in_a_then_contemporary_play) ~ 1,
+    TRUE ~ 0
+))
+
+bb <- bb %>% mutate(featured_in_a_then_contemporary_film = case_when(
+    !is.na(featured_in_a_then_contemporary_film) ~ 1,
+    TRUE ~ 0
+))
+
+bb <- bb %>% mutate(featured_in_a_then_contemporary_t_v_show = case_when(
+    !is.na(featured_in_a_then_contemporary_t_v_show) ~ 1,
+    TRUE ~ 0
+))
+
+#Combine them all into a featured variable
+
+bb <- bb %>% mutate(featured = case_when(
+    (featured_in_a_then_contemporary_play == 1 |
+         featured_in_a_then_contemporary_film == 1 |
+         featured_in_a_then_contemporary_t_v_show == 1) ~ 1,
+    TRUE ~ 0
+))
+
+#Check that the written_for variables have only 0 or 1
+checkzeroorone(bb, c("written_for_a_play", "written_for_a_film", 
+                     "written_for_a_t_v_show"))
+
+#Create a combined written_for variable
+
+bb <- bb %>% mutate(written_for = case_when(
+    (written_for_a_play == 1 |
+         written_for_a_film == 1 |
+         written_for_a_t_v_show == 1) ~ 1,
+    TRUE ~ 0
+))
+
+#Create a combined media variable
+bb <- bb %>% mutate(media = case_when(
+    featured == 1 | written_for_a_play == 1 ~ 1,
+    TRUE ~ 0
+))
+
+#Check the remaining factor variables
+checkzeroorone(bb, c("associated_with_dance", "topped_the_charts_by_multiple_artist",
+                     "double_a_side", "eurovision_entry"))
+
+#Double A side is not 0 or 1
+table(bb$double_a_side) #Ah. It lists the song name. Which is stated in the dd
+
+#Factorize all relevant variables
+
+bb <- factorize(bb, c("associated_with_dance", "topped_the_charts_by_multiple_artist",
+                "eurovision_entry", "generation", "featured", "written_for", 
+                "media"))
+```
+
+Ok. All of my data is clean now. I'm now going to remove any columns that I've flagged with TODOs since they're not going to add any value to my data analysis.
+
+The list of variables I'm going to remove is:
+- featured_artists
+- talent_contestant
+- all of those random instruments (contained in negorout(bb, c4))
+- sound effects
+- featured_in_a_then_contemporary_play
+- featured_in_a_then_contemporary_film
+- featured_in_a_then_contemporary_t_v_show
+- written_for_a_play
+- written_for_a_film
+- written_for_a_t_v_show
+- artist_white
+- artist_black
+
+```{r}
+m <- negorout(bb, c4)
+
+removenames <- c("featured_artists", 
+                 "talent_contestant", 
+                 "sound_effects",
+                 "featured_in_a_then_contemporary_play", 
+                 "featured_in_a_then_contemporary_film",
+                 "featured_in_a_then_contemporary_t_v_show",
+                 "written_for_a_play",
+                 "written_for_a_film",
+                 "written_for_a_t_v_show",
+                 "artist_white",
+                 "artist_black",
+                 colnames(m))
+
+bb <- bb %>% select(-(all_of(removenames)))
+
+```
+
+# Exploratory Data Analysis
+Ok. For the fun stuff now. I have exactly 100 variables - I now need to investigate the relationship between each (or most) of these variables with the outcome of Weeks at Number 1
+
+Starting with the ratings - there are 3 ratings from 3 judges, and the sample mean of those ratings. Let's take a look at those now:
+
+```{r}
+
+#Change plot to be 2x2
+par(mfrow = c(2, 2))
+
+with(bb, {hist(bb$rating_1, main = "Rating 1", xlab = "")
+    hist(bb$rating_2, main = "Rating 2", xlab = "")
+    hist(bb$rating_3, main = "Rating 3", xlab = "")
+    hist(bb$overall_rating, main = "Overall Rating", xlab = "")
+    })
+
+```
+Interestingly, it looks the median of rating 3 tends to be higher than the others. I'm actually curious if it's significantly different. I'll use the Kruskal-Wallis test since this is ordinal data rather than pure numeric data. 
+
+```{r}
+median(bb$rating_1)
+median(bb$rating_3)
+kruskal.test(bb$rating_3, bb$rating_1)
+```
+That's so interesting. Whoever Judge 3 is, they seem to be a bit nicer than Judge 1 at least.
+
+Regardless, it looks like the overall rating is a better measure, since it follows the same distribution but is a composite of multiple ratings. 
+
+```{r}
+g <- ggplot(data = bb, aes(x = overall_rating, y = weeks_at_number_one)) + 
+    geom_point(position = "jitter", alpha = 0.3, pch = 1)  + geom_smooth(method = "lm")
+g
+```
+The relationship doesn't look as strong as I was expecting, but there's a clear non-zero trend that feels like it will explain some variability in the outcome. We should include it in our model.
+
+Divisiveness is kind of interesting, I wonder what the distribution looks like:
+```{r}
+hist(bb$divisiveness) #Unsurprisingly, most songs are not that divisive
+
+g <- ggplot(data = bb, aes(x = divisiveness, y = weeks_at_number_one)) + 
+    geom_point(position = "jitter", alpha = 0.3, pch = 1)  + geom_smooth(method = "lm")
+g
+```
+The relationship between divisiveness and weeks at number 1 is pretty weak - I'm going to elect to not include it in my model.
+
+I can't imagine label or parent_label are going to make a significant difference in the analysis, but I'll check regardless:
+```{r}
+g <- ggplot(data = bb, aes(x = label)) + geom_bar()
+g
+
+#There are a few labels that are dominating, let's isolate them
+
+bb %>% group_by(label) %>% summarize(count = n()) %>% filter(count > 5) %>% 
+    arrange(desc(count))
+
+#What does the parent_label look like?
+bb %>% group_by(parent_label) %>% summarize(count = n()) %>% filter(count > 5) %>% 
+    arrange(desc(count))
+
+#It looks like label is consolidated, but parent_label is even more consolidated
+#The top 5 parent labels account for almost 50% of all songs
+```
+The top 5 parent labels (Warner Bros, Sony, Vivendi, EMI, and CBS) account for almost 50% of all songs that have reached number 1 on the Billboard 100. I'm going to consolidate them into a variable called toplabel
+```{r}
+bb <- bb %>% mutate(toplabel = case_when(
+    parent_label == "Warner Bros." | parent_label == "Sony" | 
+        parent_label == "Vivendi" | parent_label == "EMI" |
+        parent_label == "CBS" ~ 1,
+    is.na(parent_label) ~ NA_real_,
+    TRUE ~ 0
+))
+
+bb$toplabel <- factor(bb$toplabel)
+
+#Writing out the whole variable name for the weeks at number 1 is annoying
+#I'm going to rename it weeks
+
+bb <- bb %>% rename(weeks = weeks_at_number_one)
+
+g <- ggplot(data = bb, aes(x = toplabel, y = weeks)) + geom_boxplot()
+g
+
+#Surprisingly, it actually doesn't seem to make that much of a difference
+
+kruskal.test(bb$weeks ~ bb$toplabel)
+```
+The Kruskal Wallis test does not reach significance with an alpha of 0.5, but it is close. The fact that the medians are so close makes me inclined to not include this in our final model.
+
+Let's look at genre, which I'm sure will be important:
+```{r}
+table(bb$cdr_genre)
+
+#TODO: consolidate genres
+
+table(bb$discogs_genre)
+
+#The style variables are all very different
+```
+The discogs genre is much more specific, but for the purposes of grouping it into a genre variable, it's much less useful. The CDR genre variable is a bit broader, which makes it easier to group things together. We'll only include the CDR genre - I'm going to include genre in the model regardless, since I assume it has to have a strong impact on the rankings.
+
+```{r}
+table(bb$cdr_genre)
+```
+I can see that there are variables that have very few entries, like Polka, but other genres like Pop are well represented here. For the sake of making reasonable groups, I'll choose the 6 largest genres, and combine the rest into a fifth variable of "other" (sorry. I've recently become more partial to Folk / Country music).
+```{r}
+bb %>% group_by(cdr_genre) %>% summarize(count = n()) %>% arrange(desc(count))
+
+bb <- bb %>% mutate(genre = case_when(
+    cdr_genre != "Pop" & cdr_genre != "Rock" & cdr_genre != "Funk/Soul" &
+        cdr_genre != "Electronic/Dance" & cdr_genre != "Hip Hop" &
+        cdr_genre != "Folk/Country" ~ "Other",
+    is.na(cdr_genre) ~ NA,
+    TRUE ~ cdr_genre
+    
+))
+```
+
+Hmmm. I just now saw that there are 88 NA values for genre. That's a little more than I was expecting. 
+```{r}
+
+```
 
