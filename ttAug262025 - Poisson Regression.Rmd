@@ -25,6 +25,7 @@ topics <- tuesdata$topics
 
 library(tidyverse)
 library(ggplot2)
+library(ggsignif)
 
 ```
 ## Cleaning the Data
@@ -527,7 +528,7 @@ c4 <- names(bb)[49:73]
 
 propna(bb, c4) #Wow. All values for all variables
 
-m <- negorout(bb, c4) #16 variables have at least one negative value or outlier
+m1 <- negorout(bb, c4) #16 variables have at least one negative value or outlier
                       #Use a function to figure out what each value is
 
 checknegorout(bb, m) #All values are 1, indicating that 1 is an outlier
@@ -541,10 +542,10 @@ par(mfrow = c(4, 4),
 
 with(bb, {
     
-    for(i in 1:ncol(m)){
+    for(i in 1:ncol(m1)){
         
         #Plot a histogram
-        hist(bb[, colnames(m)[1]][[1]], main = colnames(m)[i], xlab = "")
+        hist(bb[, colnames(m1)[1]][[1]], main = colnames(m1)[i], xlab = "")
         
     }
 })
@@ -743,7 +744,6 @@ The list of variables I'm going to remove is:
 - artist_black
 
 ```{r}
-m <- negorout(bb, c4)
 
 removenames <- c("featured_artists", 
                  "talent_contestant", 
@@ -756,14 +756,22 @@ removenames <- c("featured_artists",
                  "written_for_a_t_v_show",
                  "artist_white",
                  "artist_black",
-                 colnames(m))
+                 colnames(m1))
 
 bb <- bb %>% select(-(all_of(removenames)))
 
 ```
 
 # Exploratory Data Analysis
-Ok. For the fun stuff now. I have exactly 100 variables - I now need to investigate the relationship between each (or most) of these variables with the outcome of Weeks at Number 1
+Ok. For the fun stuff now. I now need to investigate the relationship between each (or most) of these variables with the outcome of Weeks at Number 1
+
+I'll create a vector to hold the character strings of variables I'll definitely include, and a vector to hold character strings of variables I might include:
+```{r}
+def <- c()
+maybe <- c()
+
+```
+
 
 Starting with the ratings - there are 3 ratings from 3 judges, and the sample mean of those ratings. Let's take a look at those now:
 
@@ -784,33 +792,39 @@ Interestingly, it looks the median of rating 3 tends to be higher than the other
 ```{r}
 median(bb$rating_1)
 median(bb$rating_3)
-kruskal.test(bb$rating_3, bb$rating_1)
+wilcox.test(bb$rating_3, bb$rating_1)
 ```
 That's so interesting. Whoever Judge 3 is, they seem to be a bit nicer than Judge 1 at least.
 
 Regardless, it looks like the overall rating is a better measure, since it follows the same distribution but is a composite of multiple ratings. 
 
 ```{r}
-g <- ggplot(data = bb, aes(x = overall_rating, y = weeks_at_number_one)) + 
+ggplot(data = bb, aes(x = overall_rating, y = weeks_at_number_one)) + 
     geom_point(position = "jitter", alpha = 0.3, pch = 1)  + geom_smooth(method = "lm")
-g
+
+cor(bb$overall_rating, bb$weeks_at_number_one, method = "spearman")
 ```
-The relationship doesn't look as strong as I was expecting, but there's a clear non-zero trend that feels like it will explain some variability in the outcome. We should include it in our model.
+The relationship doesn't look as strong as I was expecting, but there's a clear non-zero trend that feels like it will explain some variability in the outcome. We should include it in our model. Pre-hoc, it seems reasonable to assume that rating is important. The Spearman correlation coefficient is low - I won't calculate them for future variables since I think the utility of using is low when I can see the relationship graphically.
+```{r}
+def <- c(def, "overall_rating")
+```
+
+
 
 Divisiveness is kind of interesting, I wonder what the distribution looks like:
 ```{r}
 hist(bb$divisiveness) #Unsurprisingly, most songs are not that divisive
 
-g <- ggplot(data = bb, aes(x = divisiveness, y = weeks_at_number_one)) + 
+ggplot(data = bb, aes(x = divisiveness, y = weeks_at_number_one)) + 
     geom_point(position = "jitter", alpha = 0.3, pch = 1)  + geom_smooth(method = "lm")
-g
+
 ```
 The relationship between divisiveness and weeks at number 1 is pretty weak - I'm going to elect to not include it in my model.
 
 I can't imagine label or parent_label are going to make a significant difference in the analysis, but I'll check regardless:
 ```{r}
-g <- ggplot(data = bb, aes(x = label)) + geom_bar()
-g
+ggplot(data = bb, aes(x = label)) + geom_bar()
+
 
 #There are a few labels that are dominating, let's isolate them
 
@@ -841,14 +855,14 @@ bb$toplabel <- factor(bb$toplabel)
 
 bb <- bb %>% rename(weeks = weeks_at_number_one)
 
-g <- ggplot(data = bb, aes(x = toplabel, y = weeks)) + geom_boxplot()
-g
+ggplot(data = bb, aes(x = toplabel, y = weeks)) + geom_boxplot()
+
 
 #Surprisingly, it actually doesn't seem to make that much of a difference
 
-kruskal.test(bb$weeks ~ bb$toplabel)
+wilcox.test(bb$weeks ~ bb$toplabel) #Non-significant
 ```
-The Kruskal Wallis test does not reach significance with an alpha of 0.5, but it is close. The fact that the medians are so close makes me inclined to not include this in our final model.
+The Wilcox test does not reach significance with an alpha of 0.5, but it is close. The fact that the medians are so close makes me inclined to not include this in our final model.
 
 Let's look at genre, which I'm sure will be important:
 ```{r}
@@ -877,10 +891,544 @@ bb <- bb %>% mutate(genre = case_when(
     TRUE ~ cdr_genre
     
 ))
+
+options(repr.plot.width=20, repr.plot.height=8)
+
+ggplot(data = bb, aes(x = genre, y = weeks)) + 
+    geom_dotplot(binaxis = "y", 
+                 stackdir = "center",
+                 aes(fill = generation),
+                 dotsize = 0.5,
+                 alpha = 0.3,
+                 width = 1.5,
+                 binwidth = 0.5) + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+ggplot(data = bb, aes(x = genre, y = weeks)) + geom_boxplot()
+
+#It looks like hip hop might be higher
+
+kruskal.test(weeks ~ genre, bb) #Significant
+def <- c(def, "genre")
 ```
 
-Hmmm. I just now saw that there are 88 NA values for genre. That's a little more than I was expecting. 
+Now to look at variables related to the group:
+```{r}
+#Whoops, forgot to factorize artist_structure
+bb$artist_structure <- factor(bb$artist_structure)
+
+ggplot(data = bb, aes(x = artist_structure, y = weeks)) + geom_boxplot()
+
+kruskal.test(weeks ~ artist_structure, bb)
+#It looks like 2.5 might be higher than the others, but it has only 8 entries
+#Won't include this in the final model
+```
+
+```{r}
+ggplot(data = bb, aes(x = multiple_lead_vocalists, y = weeks)) + geom_boxplot()
+
+kruskal.test(weeks ~ multiple_lead_vocalists, bb) #Significant
+
+maybe <- c(maybe, "multiple_lead_vocalists")
+```
+
+
+```{r}
+ggplot(data = bb, aes(x = group_named_after_non_lead_singer, y = weeks)) + 
+    geom_boxplot()
+
+
+wilcox.test(weeks ~ group_named_after_non_lead_singer, bb) #Not significant
+```
+
 ```{r}
 
+ggplot(data = bb, aes(x = posthumous, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ posthumous, bb)
+#No difference, won't include in model
+```
+Variables related to artists:
+```{r}
+#836 songs are from artists from the US - I'll combine variables to be US and
+# non-US
+
+bb <- bb %>% mutate(artist_us = case_when(
+    artist_place_of_origin == "United States" ~ 1,
+    is.na(artist_place_of_origin) ~ NA_real_,
+    TRUE ~ 0
+))
+
+bb$artist_us <- factor(bb$artist_us)
+
+ggplot(data = bb, aes(x = artist_us, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ artist_us, bb) #Not significant. A bop is a bop
+```
+
+```{r}
+hist(bb$front_person_age)
+
+ggplot(data = bb, aes(x = front_person_age, y = weeks)) + 
+    geom_point(position = "jitter") + geom_smooth(method = "lm")
+
+#The association isn't strong, but I'm concerned that the one point at age 78
+# is a high leverage point. I'm going to remove and replot
+
+ggplot(data = bb %>% filter(front_person_age < 70), 
+       aes(x = front_person_age, y = weeks)) + geom_point(position = "jitter") + 
+    geom_smooth(method = "lm")
+
+#Ok still doesn't change. Won't include it in the model
+```
+
+```{r}
+#artist_male
+ggplot(data = bb, aes(x = artist_male, y = weeks)) + geom_boxplot()
+#Unimpressive
+
+kruskal.test(weeks ~ artist_male, bb) #Not significant
+```
+
+```{r}
+#artist_race
+ggplot(data = bb, aes(x = artist_race, y = weeks)) + geom_boxplot()
+#Unimpressive
+
+kruskal.test(weeks ~ artist_race, bb) #Significant, unfortunately
+maybe <- c(maybe, "artist_race")
+```
+
+Think I have a groove going, but I also want to be faster. I'm going to try to do more plotting with facet wrapping to see things faster
+```{r}
+
+ggplot(data = bb %>% select(weeks, 
+                            songwriter_male, 
+                            songwriter_white, 
+                            artist_is_a_songwriter, 
+                            artist_is_only_songwriter) %>%
+           pivot_longer(cols = c(songwriter_male, 
+                                 songwriter_white, 
+                                 artist_is_a_songwriter, 
+                                 artist_is_only_songwriter),
+                        names_to = "vars",
+                        values_to = "vals"),
+       aes(x = vals, y = weeks)) + geom_boxplot() + facet_wrap(~ vars)
+
+kruskal.test(weeks ~ songwriter_male, bb) #Significant
+kruskal.test(weeks ~ songwriter_white, bb) #Significant
+kruskal.test(weeks ~ artist_is_a_songwriter, bb) #Significant
+kruskal.test(weeks ~ artist_is_only_songwriter, bb) #Non-significant
+
+maybe <- c(maybe, 
+           "songwriter_male", 
+           "songwriter_white", 
+           "artist_is_a_songwriter")
+
+```
+
+
+
+```{r}
+vars <- c("producer_male", "producer_white", 
+          "artist_is_a_producer", "artist_is_only_producer",
+          "songwriter_is_a_producer")
+
+ggplot(bb %>% select(weeks, all_of(vars)) %>%
+           pivot_longer(cols = all_of(vars),
+                        names_to = "var",
+                        values_to = "val"),
+       aes(x = val, y = weeks)) + geom_boxplot() + facet_wrap(~var) + ylim(0, 10)
+
+kruskal.test(weeks ~ producer_male, bb) #Not significant
+kruskal.test(weeks ~ producer_white, bb) #Not significant
+wilcox.test(weeks ~ artist_is_a_producer, bb) #Not significant
+wilcox.test(weeks ~ artist_is_only_producer, bb) #Not significant
+wilcox.test(weeks ~ songwriter_is_a_producer, bb) #Significant
+
+maybe <- c(maybe, "songwriter_is_a_producer")
+```
+Explore key and major/minor:
+```{r}
+ggplot(data = bb, aes(x = simplified_key, y = weeks)) + geom_boxplot() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + ylim(0, 10)
+
+#It actually looks like Em and Gm are slightly higher
+
+kruskal.test(weeks ~ simplified_key, bb) #Not significant. Interesting
+
+#I think I'm still going to include this in the model because the medians do 
+# look a little different, and pre-hoc I think this could affect ranking
+
+def <- c(def, "simplified_key")
+```
+
+```{r}
+ggplot(data = bb, aes(x = major_or_minor, y = weeks)) + geom_boxplot() + ylim(0, 10)
+
+wilcox.test(weeks ~ major_or_minor, bb) #Significant
+
+def <- c(def, "major_or_minor")
+```
+All the numeric variables:
+```{r}
+var <- c("energy",
+         "danceability",
+         "happiness",
+         "acousticness")
+
+ggplot(data = bb %>% select(weeks, all_of(var)) %>%
+           pivot_longer(cols = all_of(var), 
+                        names_to = "vars",
+                        values_to = "vals"),
+       aes(x = vals, y = weeks)) + geom_point() + geom_smooth(method = "lm") + 
+    facet_wrap(~ vars) 
+
+#It looks like acousticness and danceability might have a relationship
+
+#Plot them separately to view
+
+ggplot(data = bb, aes(x = acousticness, y = weeks)) + geom_point() + 
+    geom_smooth(method = "lm")
+
+#It looks like acousticness actually has a negative relationship with weeks
+def <- c(def, "acousticness")
+
+ggplot(data = bb, aes(x = danceability, y = weeks)) + geom_point() + 
+    geom_smooth(method = "lm")
+
+#Danceability has a positive relationship with weeks
+def <- c(def, "danceability")
+
+ggplot(data = bb, aes(x = loudness_d_b, y = weeks)) + geom_point() + 
+    geom_smooth(method = "lm")
+
+
+#Loudness also has a relationship with weeks
+def <- c(def, "loudness_d_b")
+
+ggplot(data = bb, aes(bpm, y = weeks)) + geom_point() + 
+    geom_smooth(method = "lm")
+
+#Surprising - bpm doesn't have an impact
+```
+Acousticness, danceability, and loudness all had a relationship with weeks
+
+Now to check all the dummy variables related to how the song is based. I thought about combining these variables into one, but these variables are not mutually exclusive - i.e., a song can have a value of 1 for vocally_based and for piano_keyboard_based at the same time. 
+```{r}
+
+var <- c("vocally_based",
+         "bass_based",
+         "guitar_based",
+         "piano_keyboard_based")
+
+ggplot(data = bb %>% select(weeks, all_of(var)) %>%
+           pivot_longer(cols = all_of(var),
+                        names_to = "based",
+                        values_to = "vals"),
+       aes(x = vals, y = log(weeks))) + 
+    geom_boxplot() + 
+    facet_wrap(~based) + 
+    ylim(0, 3)
+
+#Doesn't look like there's a big difference
+wilcox.test(weeks ~ vocally_based, bb) #Not significant
+wilcox.test(weeks ~ bass_based, bb) #Not significant
+wilcox.test(weeks ~ guitar_based, bb) #Significant
+wilcox.test(weeks ~ piano_keyboard_based, bb) #Not significant
+
+```
+It's a little hard to tell if any of these categorical variables have an effect. I'm looking at the boxplots, and the medians don't seem different. Of course, there are good number of outliers - some songs are at the number 1 spot for over 10 weeks, which is 2.5 months. However, based on what I saw before, especially with the simplified_key, some variables will have meaningful differences between medians based on the group.
+
+Intuitively, I'm not surprised that most of the categorical variables so far have not had significant findings. I can't imagine that things like whether the artist was male or their race would make a huge difference in the song. 
+
+```{r}
+vars <- c("orchestral_strings",
+          "horns_winds",
+          "falsetto_vocal",
+          "handclaps_snaps",
+          "saxophone")
+
+ggplot(bb %>% select(weeks, all_of(vars)) %>% 
+           pivot_longer(cols = all_of(vars),
+                        names_to = "instruments",
+                        values_to = "vals"),
+       aes(x = vals, y = weeks)) + geom_boxplot() + facet_wrap(~instruments) + 
+    ylim(0, 10)
+
+#Again, no real differences
+
+wilcox.test(weeks ~ orchestral_strings, bb) #Not significant
+wilcox.test(weeks ~ horns_winds, bb) #Significant
+wilcox.test(weeks ~ falsetto_vocal, bb) #Not significant
+wilcox.test(weeks ~ handclaps_snaps, bb) #Not significant
+wilcox.test(weeks ~ saxophone, bb) #Not significant
+
+maybe <- c(maybe, "horns_winds")
+```
+Looking at song structure, it's dominated by a few song structure types (unsurprisingly). I'll keep any song structure that has over 50 entries, and then I'll combine all the rest into an "other" category
+
+```{r}
+bb <- bb %>% mutate(structure = case_when(
+    song_structure == "A2" |
+        song_structure == "C1" |
+        song_structure == "C3" |
+        song_structure == "D1" |
+        song_structure == "E1" |
+        song_structure == "E3" ~ song_structure,
+    is.na(song_structure) ~ NA,
+    TRUE ~ "Other"
+))
+
+ggplot(data = bb, aes(x = structure, y = log(weeks))) + geom_boxplot() + ylim(0, 10)
+kruskal.test(weeks ~ structure, bb) #Significant
+
+def <- c(def, "structure")
+
+```
+
+Rap verse in a non rap song:
+```{r}
+
+ggplot(bb, aes(x = rap_verse_in_a_non_rap_song, y = weeks)) + geom_boxplot()
+#It actually looks clearly different.
+#Probably the starkest visual difference on boxplot I've seen so far
+
+wilcox.test(weeks ~ rap_verse_in_a_non_rap_song, bb) #IT'S SIGNIFICANT LMAOO
+
+#If you want your song to stick at number one, get a rapper
+
+
+#What songs even are these
+#The most recent ones are a lot of Korean songs
+#Butter by BTS had 10 straight weeks
+
+def <- c(def, "rap_verse_in_a_non_rap_song")
+
+```
+Song Length: I could see shorter songs doing better on the charts
+```{r}
+
+ggplot(bb, aes(x = length_sec, y = weeks)) + 
+    geom_point(position = "jitter",
+               alpha = 0.3) + 
+    geom_smooth(method = "lm")
+
+#I'm concerned that some of the outliers are high leverage points
+
+ggplot(bb %>% filter(length_sec < 500), aes(x = length_sec, y = weeks)) + 
+    geom_point(position = "jitter",
+               alpha = 0.3) + 
+    geom_smooth(method = "lm") #It looks there's a positive relationship
+
+def <- c(def, "length_sec")
+
+```
+Instrumental:
+```{r}
+
+ggplot(bb, aes(x = instrumental, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ instrumental, bb) #Non significant
+
+#It looks like the medians could be different, but there were only 24
+# songs with instrumentals, so the sample size is a bit small. May have reached
+# significance with a larger sample size
+
+maybe <- c(maybe, "instrumental")
+
+```
+Instrumental Length:
+```{r}
+ggplot(bb, aes(x = instrumental_length_sec, y = weeks)) + 
+    geom_point(position = "jitter") + 
+    geom_smooth(method = "lm")
+
+cor(bb$instrumental_length_sec, bb$weeks, method = "spearman")
+
+#Surprisingly strong correlation - will include in model
+
+def <- c(def, "instrumental_length_sec")
+```
+
+Introduction Length:
+```{r}
+ggplot(bb, aes(x = intro_length_sec, y = weeks)) + 
+    geom_point(position = "jitter") + 
+    geom_smooth(method = "lm")
+
+#Unimpressive, won't include in the model
+```
+Vocal Introduction:
+```{r}
+
+ggplot(bb, aes(x = vocal_introduction, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ vocal_introduction, bb) #Significant
+
+#I'm surprised, I thought a vocal introduction might make it less likely
+
+def <- c(def, "vocal_introduction")
+```
+Free Time Vocal Introduction:
+```{r}
+
+ggplot(bb, aes(x = free_time_vocal_introduction, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ free_time_vocal_introduction, bb) #Significant
+
+#I think this variable and vocal_introduction are similar and will account for
+# similar variability in the outcome
+
+#I'll include vocal_introduction and exclude this one
+
+```
+Fade out:
+```{r}
+
+ggplot(bb, aes(x = fade_out, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ fade_out, bb) #Significant
+
+#Interestingly significant. I'll include 
+
+def <- c(def, "fade_out")
+```
+
+Live
+```{r}
+
+ggplot(bb, aes(x = live, y = weeks)) + geom_boxplot()
+
+#Only 7 entries that were live - won't include
+
+```
+Cover:
+```{r}
+
+ggplot(bb, aes(x = cover, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ cover, bb) #Not significant
+
+```
+
+Samples:
+I think this will actually be highly related to the hip hop genre, since most hip hop songs have samples of other songs (like Kanye West)
+```{r}
+
+ggplot(bb, aes(x = sample, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ sample, bb) #Significant
+
+xtabs(~ sample + genre, data = bb)
+#As expected, hip hop has the highest proportion of samples
+
+#I will include this in the model, but I'll check for multicollinearity with and
+# without this variable, since I think it's mostly related to hip hop
+
+#TODO: Check VIF with and without sample
+
+def <- c(def, "sample")
+```
+
+Interpolation:
+```{r}
+
+ggplot(bb, aes(x = interpolation, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ interpolation, bb) #Not significant
+
+```
+
+Inspired by a different song:
+
+```{r}
+ggplot(bb, aes(x = inspired_by_a_different_song, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ inspired_by_a_different_song, bb) #Almost significant
+
+#Consider adding
+
+maybe <- c(maybe, "inspired_by_a_different_song")
+
+```
+Lyrical Narrative:
+```{r}
+
+ggplot(bb, aes(x = lyrical_narrative, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ lyrical_narrative, bb) #Not significant
+
+```
+Spoken Word:
+```{r}
+ggplot(bb, aes(x = spoken_word, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ spoken_word, bb) #Not significant
+```
+
+Explicit:
+I have to imagine this has an impact, no?
+```{r}
+ggplot(bb, aes(x = explicit, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ explicit, bb) #Significant
+
+def <- c(def, "explicit")
+```
+Foreign language:
+Also have to imagine that this will be important
+```{r}
+ggplot(bb, aes(x = foreign_language, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ foreign_language, bb) #Not significant
+
+#A bop remains a bop
+```
+Associated with dance:
+Again, I think this is associated with generation - more of the songs for Gen Z become popular on tik tok
+```{r}
+
+ggplot(bb, aes(x = associated_with_dance, y = weeks)) + geom_boxplot()
+
+wilcox.test(weeks ~ associated_with_dance, bb) #Not significant
+
+xtabs(~ generation + associated_with_dance, bb)
+#About 10% of songs released in this generation have a dance associated with it
+
+#If I control for generation, then I think that it will explain the variability
+# that would be explained by this as well
+```
+Media
+```{r}
+ggplot(bb, aes(x = media, y = weeks)) + geom_boxplot()
+wilcox.test(weeks ~ media, bb) #Not significant
+```
+Let's examine the variables I know I'm going to include in the model:
+```{r}
+def
+```
+
+Let's examine the variables I'm considering including in the model:
+```{r}
+maybe
+```
+The list of variables I'm definitely going to include matches pretty well with the ones I would have chosen pre-hoc. There are 15 variables, which already is a lot. Additionally, there are 9 more variables I'm considering adding. Some of these were based on the fact that the wilcox rank sum test or Kruskal Wallis test were significant. Of course, I ran many comparisons - if I ran around 100 comparisons, I would expect 5 of the tests to show significance just by chance. Based off of that, I'm okay with not including variables that don't make a lot of sense to include without the significance test results - these would be horns_winds, songwriter_male, and songwriter_white. I wouldn't normally expect that horns or winds being included in a song to have a strong impact on its ranking as number one, especially if instruments like guitar or piano which are significantly more popular were not significant. 
+
+Also, I'm doubtful that the demographics of the songwriter impact the ranking. I think the songwriter overlaps heavily with the artist - 771 songs have the artist as a songwriter. I don't know the songwriter for the vast majority of the songs I've listened to if it's not the artist themselves. 
+
+The inspired_by_a_different_song is an interesting one - it did not reach significance, but at the same time, I could see how building off a different popular song would be helpful. However, given the number of variables I already have in the model, I think I can afford to not include this one. 
+
+The big ones left are multiple_lead_vocalists, artist_race, and instrumental. Multiple lead vocalists is interesting - it is possible that groups, particularly new Kpop boy bands with various talents with dancing, singing, and rapping, are more successful than individual groups. That's one I think I'll leave in.
+
+Artist_race is also interesting - I don't deny that it could be a factor. But given that none of the other artist demographics were significant, I don't think I'll include it. I want to choose to believe that it doesn't make a big difference. 
+
+Instrumental I also think I'll leave out - I think a lot of the variability explained by this will also be captured in the instrumental_length_sec variable.
+
+This means that my final group of variables will be as follows:
+```{r}
+def <- c(def, "multiple_lead_vocalists")
+
+#Add the other variables I'd like to keep
+save <- c("song", "artist", "date", "weeks", "generation", def)
+
+#Create a new data frame that is the clean data frame subsetted with the 
+# above variables
+
+write.csv(bb %>% select(all_of(save)), file = "billboard_clean.csv")
 ```
 
