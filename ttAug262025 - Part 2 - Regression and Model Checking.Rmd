@@ -1,0 +1,245 @@
+---
+title: "ttAug262025 part 2"
+author: "AM"
+date: "2026-02-27"
+output: html_document
+---
+
+# Intro
+Because the data cleaning and exploration file got so large, I've elected to make a separate file to do my actual model assumption checking, regression, and fit checking. 
+
+To start, I'll import the cleaned and subsetted data set that I saved from my previous file. This file contains all of the variables I intend to include in the regression model, and a few others. 
+
+```{r}
+bb <- read.csv("C:\\Users\\amin2\\Desktop\\tidytuesdays\\billboard_clean.csv")
+
+head(bb)
+```
+
+Now that I have my data, I'm going to do the next step in my process: Checking my model assumptions.
+
+# Poisson Regression
+I'll take a moment here to jot down my current understanding of Poisson Regression.
+
+The Poisson distribution expresses the probability of a given number of events occurring in a fixed interval of time. One example I've seen is modeling the number of people who arrive at a bus stop within an hour. 
+
+This is in contrast to other distributions, like the normal distribution. An example of a variable that might be modeled by a normal distribution might be vertical jump - we would expect that some people cannot jump very high, some people can jump very, very high, and the vast majority of people are probably somewhere in the middle. 
+
+I've always seen the Poisson distribution referred to with regards to count data, often used for situations where the outcome is a positive integer. The math underlying the Poisson distribution is honestly beyond me, but what I do understand is that the Poisson distribution is characterized by one parameter, lambda, which is equivalent to both the mean and the variance of the distribution. 
+
+Regression analysis is a method used to estimate some outcome (dependent variable) using one or more independent variables. Poisson regression is a specific form of regression analysis that assumes that the dependent variable follows a Poisson distribution. However, as above, because the Poisson distribution necessitates that the mean and variance are equal, Poisson regression may not be able to be applied to distributions where this is violated. In these cases, negative binomial regression may be used, since this distribution also characterizes the occurrence of positive integers, but does not require that the mean and variance are equal.
+
+I think one thing I have been thinking about is whether or not the Poisson distribution actually does apply to this distribution. Lambda is inherently a rate - it requires a certain number of events to occur in a specified time. I recognize that here, there is no specified time. Would it be valid for me to say that the interval is a year? So my lambda is the number of consecutive weeks that a song retains the number one ranking on the Billboard 100 within 1 year?
+
+Also doing some more reading on the negative binomial distribution: the negative binomial distribution can be thought of as the inverse of the binomial distribution. The binomial distribution modeled the probability of attaining a number of successes in a fixed number of Bernoulli trials. For example, if we assume that the Bernoulli trial is flipping a coin, then the binomial distribution can model the probability of achieving any given number of heads in 10 flips. 
+
+The negative binomial distribution is the inverse of this - it gives the probability of achieving a fixed number of successes in a variable number of Bernoulli trials. Again, following our example, this would be observing the number of coin flips required to achieve exactly 5 heads. This is the origin of the negative binomial distribution.
+
+However, it seems like most people think of the negative binomial distribution in a different way, particularly in regression modeling. As the probability of the event occurring approaches 1 (when failures are very rare), the distribution becomes identical to the Poisson distribution. The negative binomial distribution allows for the variance to be greater than the mean - in some confusing explanations, the negative binomial distribution can be interpreted as counting events when the event rate (lambda in the Poisson distribution) varies across units. I think there's some math behind that that's a bit beyond me. 
+
+I suppose, here, we can think of each week as a Bernoulli trial - does the song stay at #1, or does it get replaced? And we do not have a fixed number of Bernoulli trials, so each song's stay at the top of the billboard seems like it should be able to be modeled by the negative binomial distribution.
+
+So even though I've titled this project as "Poisson distribution," in reality, it's more correct to term this the "Negative binomial distribution."
+
+Anyway, let's check our data
+
+## Checking Assumptions
+Looking at the distribution of the weeks variable, we see:
+```{r, echo = FALSE}
+
+hist(bb$weeks, xlab = "Weeks at #1 Ranking", main = "")
+
+```
+It looks like it follows a Poisson distribution. When we calculate the mean and variance, we find that:
+```{r}
+avg <- round(mean(bb$weeks, na.rm = TRUE), 2)
+
+variance <- round(var(bb$weeks, na.rm = TRUE), 2)
+```
+
+The mean is `r avg` and the variance is `r variance`. We see that the variance is greater than the mean, indicating there is overdispersion. Therefore, the Poisson distribution was inappropriate regardless, but it seems like the negative binomial distribution is appropriate to use. Given this, the model assumptions are valid, and we can move to the regression.
+
+#Regression
+
+I'll be using the glm.nb function from the MASS package to perform the regression.
+
+I'll run my first regression using all of the variables I identified earlier:
+
+```{r}
+library(MASS)
+
+model <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b + structure + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + sample + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model)
+
+#TODO: Do more iterative model building to minimize AIC
+#TODO: Do tests of model fit (residuals, etc)
+```
+## Model Selection
+
+I know that model selection is often the most difficult part of regression modeling. Truly, any combination of variables could be selected for the model, and there's no one right answer. A quote I see thrown around a lot is that "All models are wrong - some are useful." 
+
+Recognizing that there will always be contention over which variables are included in a model, I've elected to perform my model selection by the following. I've selected variables that I believe have some impact on the outcome pre-hoc (such song length) and/or have demonstrated a clear relationship with the outcome variable (that work is shown in the data cleaning portion).
+
+The regression model using all of the variables is shown above. Clearly, there are a lot of beta values, and I'm concerned that the model might be over-fit. I'll use two methods to pare the model down to a reasonable number of beta values while maintaining model accuracy: backwards elimination and AIC. 
+
+Backwards elimination refers to a process by which all potential predictors are included in a model, and after modeling, some predictors are removed from the model (either for being non-signficant or having low contribution), and this process is iterated multiple times. 
+
+AIC stands for Akaike information criterion - while I don't fully understand the math behind this, I understand that the AIC gives a numerical score for the estimation of prediction error. It incorporates both goodness of fit and overfitting of the model - models can be punished for being poor fits, for being overly fitted, or both. The absolute score of the AIC is difficult to interpret - the AIC is meaningful only between models, and a lower AIC is more favorable. 
+
+I'll be using backwards selection while also monitoring the AIC to find a balance between a reasonable number of predictors while also maintaining a good AIC. I don't have any strict cut-offs for this - I assume model building is as much art as it is science
+
+I'm going to remove song structure as a predictor - all of the beta values associated with it were not significant.
+
+```{r}
+model_v1 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + sample + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v1)
+```
+
+I see that sample is still not significant - I'm going to remove it because I think that genre and generation account for some of that variability.
+
+```{r}
+model_v2 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v2)
+```
+
+Most of the beta values are coming from the genre, generation, interaction beta values. I'm going to first remove generation, then I'll remove genre, and then both, and see how the models compare:
+```{r}
+model_v3.1 <- glm.nb(weeks ~ overall_rating + generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v3.1)
+```
+```{r}
+model_v3.2 <- glm.nb(weeks ~ overall_rating + genre + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v3.2)
+```
+```{r}
+model_v3.3 <- glm.nb(weeks ~ overall_rating + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + explicit + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v3.3)
+```
+Removing both genre and generation makes the AIC increase dramatically - this makes sense, as I think that genre and generation contribute to a large portion of the variability of the number of weeks. I'll first try to remove other variables before I think about removing genre and generation again.
+
+The explicit variable, surprisingly, does not seem to have a big impact
+
+```{r}
+model_v4 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    rap_verse_in_a_non_rap_song + length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v4)
+```
+Rap verse in a non-rap song (also surprisingly) does not seem to impact the outcome:
+
+```{r}
+model_v5 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor + acousticness + 
+                    danceability + loudness_d_b  + 
+                    length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v5)
+```
+In none of the models were acousticness or danceability significant. I'll remove them, starting with acousticness:
+
+```{r}
+model_v6 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor  + 
+                    danceability + loudness_d_b  + 
+                    length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v6)
+```
+Removing danceability:
+
+```{r}
+model_v7 <- glm.nb(weeks ~ overall_rating + genre * generation + 
+                    major_or_minor  + 
+                    loudness_d_b  + 
+                    length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v7)
+```
+Removing just the interaction term:
+
+```{r}
+model_v7 <- glm.nb(weeks ~ overall_rating + genre + generation + 
+                    major_or_minor  + 
+                    loudness_d_b  + 
+                    length_sec + fade_out + 
+                    instrumental_length_sec + vocal_introduction + 
+                    multiple_lead_vocalists, data = bb)
+
+summary(model_v7)
+```
+This is the lowest AIC value so far. I think removing the interaction term between genre and generation can be justified - there are multiple levels to each, and I think each beta value causes some overfitting of the model. This is the lowest AIC I've gotten so far, and I've removed variables that I feel confident do not contribute to the variability seen in the outcome. I feel comfortable leaving my model here, and I'll move on to plotting residuals for my model.
+
+# Diagnostics
+
+I'm aware that, for most models, performing diagnostics on the model after it's been fitted is important.
+
+For linear models, calling plot() on the linear model object will yield four plots. They are 
+
+1. The residual vs. fitted plot. This plots the fitted value on the x axis and its residual (the difference between the fitted value and the actual value). This can be used as a visual assessment of whether the modeled relationship is appropriate - we would expect that the residuals would be randomly distributed with no discernable pattern. In the case where the modeled relationship is not appropriate - for example, fitting a linear model to a non-linear relationship, we would see a pattern in the residual vs. fitted plot.
+
+2. A QQ plot - this plots the standardized normal residuals compared to the theoretical quantiles. We would expect the QQ plot to follow the line y=x if the model is a good fit.
+
+3. Scale location plot - this plots the square root of the standardized residuals vs. fitted values. It checks whether variance changes with the fitted values - if it does, this indicates heteroscedasticity and that variance is not constant.
+
+4. Cook's distance plot - this shows the relative influence of each point
+
+However, these plots are for linear models, whereas models like logistic regression models, negative binomial models, etc., are generalized linear models.
+
+In my reading, I've found that, at the very least, a deviance residual vs. fitted plot should be generated. The deviance residual measures the difference in log likelihood of a saturated, perfectly fitted model and the current model. Similar to the residual vs. fitted plot, the deviance residual vs. fitted plot should also have no discernable pattern. 
+
+
+```{r}
+
+plot(fitted(model_v7), residuals(model_v7, type = "deviance"))
+abline(h = 0, lty = 2)
+```
+
+It looks like there is some sort of a down-sloping pattern. I think my model needs a little more work to make sure that the underlying relationship is modeled appropriately.
+
+But for the purposes of demonstrating my thought process and ability, I think I'll pause here - I feel like I've accurately demonstrated my understanding and ability in this project
